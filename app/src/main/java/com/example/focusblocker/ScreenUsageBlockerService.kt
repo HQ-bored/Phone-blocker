@@ -20,6 +20,7 @@ import android.view.Gravity
 import android.view.WindowManager
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 
 class ScreenUsageBlockerService : Service() {
 
@@ -79,7 +80,9 @@ class ScreenUsageBlockerService : Service() {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
         }
-        registerReceiver(screenReceiver, filter)
+        // Android 14+ requires an export flag on context-registered receivers;
+        // ContextCompat handles the version check for older Android versions.
+        ContextCompat.registerReceiver(this, screenReceiver, filter, ContextCompat.RECEIVER_EXPORTED)
 
         screenOnTime = SystemClock.elapsedRealtime()
         handler.post(checkUsageRunnable)
