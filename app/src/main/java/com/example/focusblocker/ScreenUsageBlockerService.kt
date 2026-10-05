@@ -27,11 +27,9 @@ class ScreenUsageBlockerService : Service() {
     private val BLOCK_THRESHOLD_MS = 15 * 60 * 1000L
     private val handler = Handler(Looper.getMainLooper())
 
-    private val distractingApps = setOf(
-        "com.instagram.android",
-        "com.zhiliaoapp.musically",
-        "com.google.android.youtube"
-    )
+    private fun getBlockedApps(): Set<String> =
+        getSharedPreferences("FocusBlockerPrefs", MODE_PRIVATE)
+            .getStringSet("blocked_apps", emptySet()) ?: emptySet()
 
     private var isOverlayShowing = false
     private var windowManager: WindowManager? = null
@@ -59,7 +57,7 @@ class ScreenUsageBlockerService : Service() {
                 val elapsedTime = SystemClock.elapsedRealtime() - screenOnTime
                 if (elapsedTime >= BLOCK_THRESHOLD_MS) {
                     val foregroundApp = getForegroundPackageName()
-                    if (distractingApps.contains(foregroundApp)) {
+                    if (getBlockedApps().contains(foregroundApp)) {
                         showBlockOverlay("Take a break! You've been on your phone for 15+ minutes.")
                     } else {
                         removeOverlay()
