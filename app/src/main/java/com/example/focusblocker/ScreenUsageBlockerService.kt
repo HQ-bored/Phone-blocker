@@ -25,11 +25,29 @@ class ScreenUsageBlockerService : Service() {
 
     private var screenOnTime: Long = 0L
     private val BLOCK_THRESHOLD_MS = 15 * 60 * 1000L
+    private val NAG_RESHOW_MS = 10 * 1000L
     private val handler = Handler(Looper.getMainLooper())
+
+    private var lastForegroundApp: String? = null
+    private var nagSessionActive = false
+    private var lastOverlayRemovedAt: Long = 0L
 
     private fun getBlockedApps(): Set<String> =
         getSharedPreferences("FocusBlockerPrefs", MODE_PRIVATE)
             .getStringSet("blocked_apps", emptySet()) ?: emptySet()
+
+    private fun updateForegroundApp() {
+        val usm = getSystemService(USAGE_STATS_SERVICE) as UsageStatsManager
+        val time = System.currentTimeMillis()
+        val events = usm.queryEvents(time - 10000, time)
+        val event = UsageEvents.Event()
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
+                lastForegroundApp = event.packageName
+            }
+        }
+    }
 
     private var isOverlayShowing = false
     private var windowManager: WindowManager? = null
@@ -40,10 +58,15 @@ class ScreenUsageBlockerService : Service() {
             when (intent?.action) {
                 Intent.ACTION_SCREEN_ON -> {
                     screenOnTime = SystemClock.elapsedRealtime()
+                    nagSessionActive = false
+                    lastOverlayRemovedAt = 0L
+                    lastForegroundApp = null
                     handler.post(checkUsageRunnable)
                 }
                 Intent.ACTION_SCREEN_OFF -> {
                     screenOnTime = 0L
+                    nagSessionActive = false
+                    lastOverlayRemovedAt = 0L
                     handler.removeCallbacks(checkUsageRunnable)
                     removeOverlay()
                 }
@@ -54,13 +77,20 @@ class ScreenUsageBlockerService : Service() {
     private val checkUsageRunnable = object : Runnable {
         override fun run() {
             if (screenOnTime > 0) {
+                updateForegroundApp()
                 val elapsedTime = SystemClock.elapsedRealtime() - screenOnTime
-                if (elapsedTime >= BLOCK_THRESHOLD_MS) {
-                    val foregroundApp = getForegroundPackageName()
-                    if (getBlockedApps().contains(foregroundApp)) {
+                if (!nagSessionActive && elapsedTime >= BLOCK_THRESHOLD_MS &&
+                    getBlockedApps().contains(lastForegroundApp)) {
+                    nagSessionActive = true
+                }
+                if (nagSessionActive) {
+                    val now = SystemClock.elapsedRealtime()
+                    if (isOverlayShowing) {
+                        if (lastForegroundApp != null && !getBlockedApps().contains(lastForegroundApp)) {
+                            removeOverlay()
+                        }
+                    } else if (lastOverlayRemovedAt == 0L || now - lastOverlayRemovedAt >= NAG_RESHOW_MS) {
                         showBlockOverlay("Take a break! You've been on your phone for 15+ minutes.")
-                    } else {
-                        removeOverlay()
                     }
                 }
             }
@@ -103,22 +133,6 @@ class ScreenUsageBlockerService : Service() {
         startForeground(1, notification)
     }
 
-    private fun getForegroundPackageName(): String? {
-        val usm = getSystemService(USAGE_STATS_SERVICE) as UsageStatsManager
-        val time = System.currentTimeMillis()
-        val events = usm.queryEvents(time - 5000, time)
-        val event = UsageEvents.Event()
-        var currentApp: String? = null
-
-        while (events.hasNextEvent()) {
-            events.getNextEvent(event)
-            if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
-                currentApp = event.packageName
-            }
-        }
-        return currentApp
-    }
-
     private fun showBlockOverlay(message: String) {
         if (isOverlayShowing) return
 
@@ -147,6 +161,7 @@ class ScreenUsageBlockerService : Service() {
             windowManager?.removeView(overlayView)
             overlayView = null
             isOverlayShowing = false
+            lastOverlayRemovedAt = SystemClock.elapsedRealtime()
         }
     }
 
