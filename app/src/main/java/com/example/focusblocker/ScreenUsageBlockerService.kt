@@ -93,6 +93,7 @@ class ScreenUsageBlockerService : Service() {
                         showBlockOverlay("Take a break! You've been on your phone for 15+ minutes.")
                     }
                 }
+                updateNotification()
             }
             handler.postDelayed(this, 2000)
         }
@@ -131,6 +132,26 @@ class ScreenUsageBlockerService : Service() {
             .build()
 
         startForeground(1, notification)
+    }
+
+    private fun updateNotification() {
+        val now = SystemClock.elapsedRealtime()
+        val text = when {
+            nagSessionActive -> "Break time! Put the phone down."
+            screenOnTime > 0 -> {
+                val remainingMs = (BLOCK_THRESHOLD_MS - (now - screenOnTime)).coerceAtLeast(0L)
+                val minutes = remainingMs / 60000
+                val seconds = (remainingMs % 60000) / 1000
+                "Pop-up in %02d:%02d".format(minutes, seconds)
+            }
+            else -> "Monitoring screen time..."
+        }
+        val notification = NotificationCompat.Builder(this, "FocusBlockerChannel")
+            .setContentTitle("Focus Blocker")
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_menu_info_details)
+            .build()
+        getSystemService(NotificationManager::class.java).notify(1, notification)
     }
 
     private fun showBlockOverlay(message: String) {
