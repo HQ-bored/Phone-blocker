@@ -9,14 +9,24 @@ import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
 
+    companion object {
+        const val PREFS_NAME = "FocusBlockerPrefs"
+        const val KEY_BLOCKED_APPS = "blocked_apps"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
 
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -60,9 +70,62 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        val btnStop = Button(this).apply {
+            text = "4. Stop Focus Service"
+            setOnClickListener {
+                stopService(Intent(this@MainActivity, ScreenUsageBlockerService::class.java))
+                Toast.makeText(this@MainActivity, "Focus Service Stopped", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        val pickerLabel = TextView(this).apply {
+            text = "Apps to block:"
+            textSize = 18f
+            setPadding(0, 40, 0, 20)
+        }
+
+        val appListLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        val pm = packageManager
+        val launcherIntent = Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER)
+        val apps = pm.queryIntentActivities(launcherIntent, 0)
+            .map { it.activityInfo.applicationInfo }
+            .distinctBy { it.packageName }
+            .sortedBy { pm.getApplicationLabel(it).toString().lowercase() }
+
+        for (app in apps) {
+            val pkg = app.packageName
+            val label = pm.getApplicationLabel(app).toString()
+            val checkBox = CheckBox(this).apply {
+                text = label
+                isChecked = prefs.getStringSet(KEY_BLOCKED_APPS, emptySet())?.contains(pkg) == true
+                setOnCheckedChangeListener { _, isChecked ->
+                    val current = prefs.getStringSet(KEY_BLOCKED_APPS, emptySet())?.toMutableSet()
+                        ?: mutableSetOf()
+                    if (isChecked) current.add(pkg) else current.remove(pkg)
+                    prefs.edit().putStringSet(KEY_BLOCKED_APPS, current).apply()
+                }
+            }
+            appListLayout.addView(checkBox)
+        }
+
+        val appListScroll = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+            addView(appListLayout)
+        }
+
         layout.addView(btnUsage)
         layout.addView(btnOverlay)
         layout.addView(btnStart)
+        layout.addView(btnStop)
+        layout.addView(pickerLabel)
+        layout.addView(appListScroll)
 
         setContentView(layout)
     }
