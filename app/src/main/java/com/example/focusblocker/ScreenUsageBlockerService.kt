@@ -69,6 +69,7 @@ class ScreenUsageBlockerService : Service() {
                     lastOverlayRemovedAt = 0L
                     handler.removeCallbacks(checkUsageRunnable)
                     removeOverlay()
+                    updateNotification()
                 }
             }
         }
